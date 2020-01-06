@@ -44,6 +44,8 @@ class MainActivity : AppCompatActivity() {
         if (locationText!!.isNotEmpty()) {
             currentlyText.visibility = View.INVISIBLE
             outlookText.visibility = View.INVISIBLE
+            rightNowText.text = ""
+            outlookScrollView.removeAllViews()
             // Build the Retrofit instance using GetService data classes returned as Observables
             // Push Observable to io thread, handle results on main thread via onLocationResponse
             disposables.add(
@@ -56,7 +58,7 @@ class MainActivity : AppCompatActivity() {
                     .getLocation(locationText)
                     .observeOn(AndroidSchedulers.mainThread())
                     .subscribeOn(Schedulers.io())
-                    .doOnError { println("Error in onLocationResponse: " + it.printStackTrace()) }
+                    .onErrorReturn { LocationData("","","") }
                     .subscribe(this::onLocationResponse)
             )
         }
@@ -69,39 +71,47 @@ class MainActivity : AppCompatActivity() {
         // Build the Retrofit instance using GetService data classes returned as Observables
         // Push Observable to io thread, handle results on main thread via onWeatherResponse
         currentLocation = location.formattedAddr
-        disposables.add(
-            Retrofit.Builder()
-                .baseUrl(Constants().BASE_API_URL)
-                .addConverterFactory(GsonConverterFactory.create())
-                .addCallAdapterFactory(RxJava2CallAdapterFactory.create())
-                .build()
-                .create(GetService::class.java)
-                .getWeather(location.lat, location.lng)
-                .observeOn(AndroidSchedulers.mainThread())
-                .subscribeOn(Schedulers.io())
-                .doOnError { println("Error in onWeatherResponse: " + it.printStackTrace()) }
-                .subscribe(this::onWeatherResponse)
-        )
+        if (currentLocation.isNotEmpty()) {
+            disposables.add(
+                Retrofit.Builder()
+                    .baseUrl(Constants().BASE_API_URL)
+                    .addConverterFactory(GsonConverterFactory.create())
+                    .addCallAdapterFactory(RxJava2CallAdapterFactory.create())
+                    .build()
+                    .create(GetService::class.java)
+                    .getWeather(location.lat.toDouble(), location.lng.toDouble())
+                    .observeOn(AndroidSchedulers.mainThread())
+                    .subscribeOn(Schedulers.io())
+                    .onErrorReturn { WeatherData() }
+                    .subscribe(this::onWeatherResponse)
+            )
+        } else {
+            rightNowText.text = Constants().NO_RESULTS
+        }
     }
 
     /**
      * Returns weather response data, cleans up resources, terminates disposables
      */
     private fun onWeatherResponse(weather: WeatherData) {
-        searchInput.text.clear()
-        currentlyText.visibility = View.VISIBLE
-        outlookText.visibility = View.VISIBLE
-        // right now
-        val currentTemp = weather.currently?.feelsLikeTemp
-        val summary = weather.currently?.summary
-        rightNowText.text = "$currentLocation\n$currentTemp\n$summary"
-        // outlook
-        buildOutlookViews(weather)
-        // clear soft keyboard via InputMethodManager
-        val view = this.currentFocus
-        view?.let {
-            val iManager = getSystemService(Context.INPUT_METHOD_SERVICE) as? InputMethodManager
-            iManager?.hideSoftInputFromWindow(it.windowToken, 0)
+        if (weather.currently?.summary!!.isNotEmpty()) {
+            searchInput.text.clear()
+            currentlyText.visibility = View.VISIBLE
+            outlookText.visibility = View.VISIBLE
+            // right now
+            val currentTemp = weather.currently.feelsLikeTemp
+            val summary = weather.currently.summary
+            rightNowText.text = "$currentLocation\n$currentTemp\n$summary"
+            // outlook
+            buildOutlookViews(weather)
+            // clear soft keyboard via InputMethodManager
+            val view = this.currentFocus
+            view?.let {
+                val iManager = getSystemService(Context.INPUT_METHOD_SERVICE) as? InputMethodManager
+                iManager?.hideSoftInputFromWindow(it.windowToken, 0)
+            }
+        } else {
+            rightNowText.text = Constants().NO_RESULTS
         }
         // clean up RXJava2 disposables
         disposables.forEach { it.dispose() }
@@ -122,11 +132,11 @@ class MainActivity : AppCompatActivity() {
         layout.topMargin = defaultMargin
         linearLayout.layoutParams = layout
         linearLayout.orientation = LinearLayout.VERTICAL
-        var textViewLayout = LayoutParams(LayoutParams.WRAP_CONTENT, LayoutParams.WRAP_CONTENT)
+        val textViewLayout = LayoutParams(LayoutParams.WRAP_CONTENT, LayoutParams.WRAP_CONTENT)
         textViewLayout.topMargin = defaultMargin
         weather.daily?.forEach{
             val localDate = toLocalDate(it.date?.toLong())
-            var tV = TextView(context)
+            val tV = TextView(context)
             tV.layoutParams = textViewLayout
             tV.text =
                 localDate + "\nHigh: " + it.tempHigh + ", Low: " + it.tempLow + "\n" + it.summary
