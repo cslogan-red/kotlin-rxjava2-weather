@@ -1,0 +1,7 @@
+<resources>
+    <string name="app_name">FreeWeatherProject</string>
+    <string name="getButton">Search</string>
+    <string name="currently">Right now</string>
+    <string name="outlook">Extended Outlook</string>
+    <string name="searchHint">Type any location...</string>
+</resources>
